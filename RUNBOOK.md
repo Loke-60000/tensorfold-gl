@@ -1,7 +1,7 @@
 # Installation runbook
 
 TensorFold runs from a native executable.
-Choose a qualified model and platform from [README.md](README.md#qualified-models), then keep its complete checkpoint outside the source checkout.
+Choose a qualified model and platform from [README.upstream.md](README.upstream.md#qualified-models), then keep its complete checkpoint outside the source checkout.
 The model directory needs configuration, tokenizer, chat template and weight files.
 An existing complete Hugging Face cache also works.
 
@@ -120,7 +120,7 @@ curl -fsS http://127.0.0.1:8080/v1/chat/completions \
 Use `http://127.0.0.1:8080/v1` as the OpenAI client base URL.
 For streaming, add `"stream": true` to the request.
 The native server also has `/v1/responses` and Anthropic `/v1/messages` routes.
-Serve flags and request overrides are described in [README.md](README.md#serve-flags).
+Serve flags and request overrides are described in [README.upstream.md](README.upstream.md#serve-flags).
 
 ## Linux and CUDA
 
