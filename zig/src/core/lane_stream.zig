@@ -1,6 +1,7 @@
 //! A request's stream on the lane host: its kept prefix looked up, its drafter made, the stream set up.
 const std = @import("std");
 const lanes = @import("lanes");
+const api = @import("engine_api.zig");
 const host = @import("lane_host.zig");
 const recalls = @import("lane_host_recall.zig");
 const LaneHost = host.LaneHost;
@@ -12,18 +13,24 @@ pub fn freeProposer(h: *LaneHost, job: *Job) void {
     job.custom = null;
 }
 
+/// What a request's kept states depend on beyond its words (0: nothing): its image frame, and whether it is ablated.
+fn namespace(h: *const LaneHost, r: *const api.Request) u64 {
+    const frame: u64 = if (h.frame_key) |f| (if (r.images.len > 0) f(r.images) else 0) else 0;
+    return if (r.ablate) std.hash.Wyhash.hash(frame, "ablate") else frame;
+}
+
 /// An admitted job's stream (its kept prefix looked up, its drafter): false when it failed (the job is finished).
 pub fn open(h: *LaneHost, job: *Job) bool {
     const r = job.request;
     var reuse: lanes.stream.Reuse = .{};
     // the entry stays alive until the backend restores it: nothing keeps between here and this stream's own pass
-    if (h.frame_key) |frame| if (h.cache != null and r.images.len > 0 and r.cacheKey().len > 0) {
-        const f = frame(r.images);
-        if (f != 0) {
+    if (h.cache != null and r.cacheKey().len > 0) {
+        const n = namespace(h, r);
+        if (n != 0) {
             job.key = h.gpa.dupe(u32, r.cacheKey()) catch return !h.drop(job, "out of memory");
-            job.key[0] = 0x8000_0000 | @as(u32, @truncate(std.hash.Wyhash.hash(f, std.mem.asBytes(&job.key[0])) & 0x7fff_ffff));
+            job.key[0] = 0x8000_0000 | @as(u32, @truncate(std.hash.Wyhash.hash(n, std.mem.asBytes(&job.key[0])) & 0x7fff_ffff));
         }
-    };
+    }
     if (h.cache) |store| if (r.embedding == null and r.prompt_logprobs == null and !r.untaught) if (store.lookupRewind(h.gpa, job.cacheKey(), r.bornLen(), r.history_len, r.rewind_len, r.shared_prefixes, r.chunks, h.spans(r))) |l| {
         job.entry = l.entry;
         job.kept0 = store.counts.kept;
@@ -68,6 +75,7 @@ pub fn open(h: *LaneHost, job: *Job) bool {
         .untaught = r.untaught,
         .images = r.images,
         .key = r.cache_key,
+        .ablate = r.ablate,
     }) catch {
         freeProposer(h, job);
         recalls.release(job);

@@ -141,6 +141,7 @@ pub const Spec = struct {
     decode_spans: []const [2]u32 = &.{}, // prompt rows an earlier reply decoded (Request.decode_spans), for backends that keep their bits
     images: []const Image = &.{}, // in prompt order; the backend's tower fills their rows
     key: []const u32 = &.{}, // the prompt as the cache matches it (image rows by their image); empty: the prompt
+    ablate: bool = false, // the backend removes its ablation directions from this stream's rows (Request.ablate)
 };
 
 pub const Stream = struct {
@@ -180,6 +181,7 @@ pub const Stream = struct {
     untaught: bool = false,
     images: []const Image = &.{},
     key: []const u32 = &.{},
+    ablate: bool = false,
     cached: u32 = 0, // prompt tokens the backend restored from `reuse` (its prompt pass started there)
     fill_at: std.atomic.Value(u32) = .init(0), // prompt tokens the pass has prefilled; the engine thread writes
     reuse_failed: bool = false, // the backend's restore of `reuse` failed: it prefilled from 0
@@ -256,6 +258,7 @@ pub const Stream = struct {
             .decode_spans = spec.decode_spans,
             .images = spec.images,
             .key = spec.key,
+            .ablate = spec.ablate,
         };
         // under a grammar a forced close ends at the think end: the grammar takes the reply from the next token
         if (spec.grammar) |g| if (g.after) |end| if (std.mem.indexOfScalar(u32, s.think_close, end)) |at| {
