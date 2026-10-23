@@ -53,6 +53,12 @@ The flag reaches the backend as `Stream.ablate`; a family that reports `Info.abl
 its own directions to those rows. No family in this branch does yet, so the server refuses
 to start with `TENSORFOLD_ABLATE_MODEL` set until one does.
 
+For a working family implementation, see patch 0006 of
+[deepseek-v4.1-1017-1xGB10-recipe](https://github.com/Loke-60000/deepseek-v4.1-1017-1xGB10-recipe/blob/main/patches/0006-run-time-ablation-model-id.patch).
+It serves DeepSeek-V4.1-Flash on one DGX Spark through jayleaton's TensorFold kit: the
+directions are loaded from a safetensors file, removed from each layer's attention output
+for the ablated rows by one small kernel, and ablated session states carry their own tag.
+
 Ablated and stock requests never share prompt-cache states. An ablated request's key gets
 its own namespace, folded into the first word the same way an image frame is.
 
