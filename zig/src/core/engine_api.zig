@@ -101,6 +101,8 @@ pub const Request = struct {
     images: []const Image = &.{},
     /// The prompt as the prompt cache matches it (each image's placeholders by its content); empty: ``prompt``.
     cache_key: []const u32 = &.{},
+    /// The request named the server's ablation model: an ``Info.ablate`` engine removes its directions from the rows.
+    ablate: bool = false,
 
     /// The prompt as the prompt cache matches it: an image request's placeholders stand for their images.
     pub fn cacheKey(r: *const Request) []const u32 {
@@ -213,6 +215,8 @@ pub const Info = struct {
     pictures: bool = false,
     /// Image input (--vision); null: text only.
     vision: ?Vision = null,
+    /// The engine loaded ablation directions and applies them to ``Request.ablate`` requests.
+    ablate: bool = false,
     /// The engine decodes greedily only: the server refuses a request with a temperature before admitting it.
     greedy_only: bool = false,
     /// The learner reads conversation prompts at any length through taps.

@@ -59,6 +59,8 @@ pub const Config = struct {
     prompt_seed: bool = false,
     /// TENSORFOLD_REQUEST_LOG: where chat and completion bodies are appended; null: nowhere.
     request_log: ?[]const u8 = null,
+    /// TENSORFOLD_ABLATE_MODEL: the model id whose requests are ablated; null: none are.
+    ablate_model: ?[]const u8 = null,
     /// Null keeps every reply identical to a server that has no compaction.
     compact_at: ?CompactAt = null,
     /// Tokens of the recent tail kept whole. Null uses min(20000, a quarter of the window).
@@ -81,6 +83,11 @@ pub const Config = struct {
     identity: Identity = .{},
     /// The process environment GET /v1/benchmark/manifest reads (rank count, revision, the hardware probe); null: none.
     environ: ?*const std.process.Environ.Map = null,
+
+    pub fn ablates(c: *const Config, model: []const u8) bool {
+        const id = c.ablate_model orelse return false;
+        return std.mem.eql(u8, id, model);
+    }
 };
 
 pub const Server = struct {

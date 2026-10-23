@@ -69,6 +69,7 @@ test {
     _ = @import("compact_test.zig");
     _ = @import("request_log.zig");
     _ = @import("completion_prompt_test.zig");
+    _ = @import("ablate_test.zig");
     _ = @import("hf_eos_http_test.zig");
     _ = @import("server_init_test.zig");
     _ = @import("decisions.zig");
