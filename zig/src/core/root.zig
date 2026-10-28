@@ -1,6 +1,7 @@
 //! Backend-neutral engine parts: checkpoint files, the CUDA draft-depth rule, the copy index, the tokenizer.
 
 pub const safetensors = @import("safetensors.zig");
+pub const identities = @import("identities.zig");
 pub const npy = @import("npy.zig");
 pub const exl3_format = @import("exl3_format.zig");
 pub const exlr8 = @import("exlr8.zig");
@@ -56,6 +57,7 @@ pub const checkpoint_weights = @import("checkpoint_weights.zig");
 pub const kv_pool = @import("kv_pool.zig");
 
 test {
+    _ = identities;
     _ = checkpoint_weights;
     _ = safetensors;
     _ = affine4_host;

@@ -659,15 +659,15 @@ pub fn Pass(comptime Tri: type) type {
             for (0..blocks) |b| pos[4 * b] = @intCast(if (self.lanes.len > 0) self.lanes[b].pos else self.pos0 + b * att_rows);
             try self.upload(s.pos, std.mem.sliceAsBytes(pos));
             if (self.m.abl != null) {
-                // each row's abliteration flag: its lane's request asked for it, or the lone sequence's did
+                // each row's identity: its lane's request named it, or the lone sequence's did
                 const mask = s.hostMask(n);
                 if (self.lanes.len > 0) {
                     var at: usize = 0;
                     for (self.lanes) |l| {
-                        @memset(mask[at..][0..l.rows], if (l.seq.ablate) 1 else 0);
+                        @memset(mask[at..][0..l.rows], @as(f32, @floatFromInt(l.seq.ablate)));
                         at += l.rows;
                     }
-                } else @memset(mask, if (self.seq.ablate) 1 else 0);
+                } else @memset(mask, @as(f32, @floatFromInt(self.seq.ablate)));
                 try self.upload(s.ablate, std.mem.sliceAsBytes(mask));
             }
             if (!self.prepared) try s.uploaded();

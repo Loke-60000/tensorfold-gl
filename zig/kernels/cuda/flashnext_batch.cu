@@ -527,17 +527,23 @@ extern "C" __global__ void __launch_bounds__(256) fn_gdn_chain_tpr(const float* 
 // The prompt GDN block in one kernel a value head (front, chain, gated norm; their bits), no fp32 rows through memory.
 #include "flashnext_gdn_fused.cuh"
 
-// Run-time abliteration of a residual-stream writer's rows (cuda_ablate.zig): y[0][r] -= mask[r] * sum_j lam[j] (R_j . y[r]) R_j
-// where y[r] is the sum of the `slices` fp32 slices' row r (`slice_stride` apart, rows `row_stride` apart) and the
-// correction lands in slice 0; R [k, d] fp32 orthonormal rows, k <= 4. One block of 256 threads a row; the dot products are
-// reduced in a fixed order (each thread's columns, the warp tree, then the warps in order), so a row's result never depends
-// on the batch. A row whose mask is 0 is neither read nor written.
+// Run-time abliteration of a residual-stream writer's rows (cuda_ablate.zig): y[0][r] -= sum_j lam[j] (R_j . y[r]) R_j
+// with R and lam the identity row r names, where y[r] is the sum of the `slices` fp32 slices' row r (`slice_stride`
+// apart, rows `row_stride` apart) and the correction lands in slice 0. `who` [rows] holds each row's identity (0: left
+// alone, neither read nor written); `table` holds each identity's [k * d directions | k lam_attn | k lam_shared], `stride`
+// floats apart, R orthonormal rows, k <= 4; `meta` its k and first layer (below it the row is left alone); `kind` 0 reads
+// lam_attn, 1 lam_shared. One block of 256 threads a row; the dot products are reduced in a fixed order (each thread's
+// columns, the warp tree, then the warps in order), so a row's result never depends on the batch.
 extern "C" __global__ void __launch_bounds__(256) fn_ablate_rows(float* __restrict__ y, long long row_stride,
                                                                  long long slice_stride, int slices,
-                                                                 const float* __restrict__ mask, const float* __restrict__ R,
-                                                                 const float* __restrict__ lam, int d, int k) {
-    const float m = mask[blockIdx.x];
-    if (m == 0.0f) return;
+                                                                 const float* __restrict__ who, const float* __restrict__ table,
+                                                                 const int* __restrict__ meta, int stride, int kind, int layer, int d) {
+    const int id = static_cast<int>(who[blockIdx.x]);
+    if (id == 0) return;
+    const int k = meta[2 * (id - 1)];
+    if (layer < meta[2 * (id - 1) + 1]) return;
+    const float* __restrict__ R = table + static_cast<long long>(id - 1) * stride;
+    const float* __restrict__ lam = R + k * d + kind * k;
     float* row = y + static_cast<long long>(blockIdx.x) * row_stride;
     float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     for (int i = threadIdx.x; i < d; i += blockDim.x) {
@@ -556,7 +562,7 @@ extern "C" __global__ void __launch_bounds__(256) fn_ablate_rows(float* __restri
     if (threadIdx.x < static_cast<unsigned>(k)) {
         float s = 0.0f;
         for (unsigned w = 0; w < blockDim.x / 32; ++w) s = __fadd_rn(s, part[threadIdx.x][w]);
-        coef[threadIdx.x] = __fmul_rn(__fmul_rn(s, lam[threadIdx.x]), m);
+        coef[threadIdx.x] = __fmul_rn(s, lam[threadIdx.x]);
     }
     __syncthreads();
     for (int i = threadIdx.x; i < d; i += blockDim.x) {

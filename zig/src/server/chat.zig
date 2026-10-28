@@ -34,8 +34,8 @@ pub const Input = struct {
     logprobs: ?u8 = null,
     /// ``/v1/completions``' ``prompt_logprobs``: rows for the prompt with this many alternatives; null: not asked.
     prompt_logprobs: ?u8 = null,
-    /// The request named the server's TENSORFOLD_ABLATE_MODEL.
-    ablate: bool = false,
+    /// The identity the request's model id names, 1..n of Config.identities; 0: none.
+    ablate: u8 = 0,
 };
 
 /// A streamed piece: content text (a string) or a delta object (reasoning or tool calls).

@@ -570,7 +570,7 @@ test "an ablated request keeps and resumes its own states: never a stock one's, 
     // the same tokens ablated: no resume from the stock state, a state of its own kept beside it
     var a1: Box = .{};
     defer a1.tokens.deinit(gpa);
-    const ra1: Request = .{ .prompt = &t1, .max_tokens = 6, .history_len = 8, .ablate = true };
+    const ra1: Request = .{ .prompt = &t1, .max_tokens = 6, .history_len = 8, .ablate = 1 };
     try e.submit(2, &ra1, .{ .ctx = &a1, .event = Box.event });
     try std.testing.expectEqual(Reason.length, a1.wait());
     try std.testing.expectEqual(@as(?u32, 0), a1.cached);
@@ -584,7 +584,7 @@ test "an ablated request keeps and resumes its own states: never a stock one's, 
     try t2.appendSlice(gpa, &.{ 7, 7, 5, 3 });
     var a2: Box = .{};
     defer a2.tokens.deinit(gpa);
-    const ra2: Request = .{ .prompt = t2.items, .max_tokens = 12, .history_len = @intCast(t2.items.len - 2), .ablate = true };
+    const ra2: Request = .{ .prompt = t2.items, .max_tokens = 12, .history_len = @intCast(t2.items.len - 2), .ablate = 1 };
     try e.submit(3, &ra2, .{ .ctx = &a2, .event = Box.event });
     try std.testing.expectEqual(Reason.length, a2.wait());
     try std.testing.expectEqual(@as(?u32, 8), a2.cached);
@@ -598,4 +598,13 @@ test "an ablated request keeps and resumes its own states: never a stock one's, 
     try std.testing.expectEqual(@as(u64, 2), store.counts.hits);
     // the fake's replies read the whole history: a resume from the wrong state would change them
     try std.testing.expectEqualSlices(u32, s2.tokens.items, a2.tokens.items);
+    // a second identity on the same tokens: neither the stock state nor the first identity's resumes it
+    var b1: Box = .{};
+    defer b1.tokens.deinit(gpa);
+    const rb1: Request = .{ .prompt = t2.items, .max_tokens = 12, .history_len = @intCast(t2.items.len - 2), .ablate = 2 };
+    try e.submit(5, &rb1, .{ .ctx = &b1, .event = Box.event });
+    try std.testing.expectEqual(Reason.length, b1.wait());
+    try std.testing.expectEqual(@as(?u32, 0), b1.cached);
+    try std.testing.expectEqual(@as(u64, 2), store.counts.hits);
+    try std.testing.expectEqualSlices(u32, s2.tokens.items, b1.tokens.items);
 }

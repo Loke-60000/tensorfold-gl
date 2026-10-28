@@ -101,8 +101,8 @@ pub const Request = struct {
     images: []const Image = &.{},
     /// The prompt as the prompt cache matches it (each image's placeholders by its content); empty: ``prompt``.
     cache_key: []const u32 = &.{},
-    /// The request named TENSORFOLD_ABLATE_MODEL (``Info.ablate`` engines only): its rows get the abliteration.
-    ablate: bool = false,
+    /// The identity the request named, 1..n in TENSORFOLD_IDENTITIES' order (``Info.ablate`` engines only); 0: the stock model.
+    ablate: u8 = 0,
 
     /// The prompt as the prompt cache matches it: an image request's placeholders stand for their images.
     pub fn cacheKey(r: *const Request) []const u32 {
@@ -222,7 +222,7 @@ pub const Info = struct {
     slide_conversations: bool = false,
     /// Whether a request's caches fit beside the running streams' now (null: a free lane does); else it waits in order.
     admit: ?Admit = null,
-    /// The engine loaded TENSORFOLD_ABLATE and takes ``Request.ablate``.
+    /// The engine loaded TENSORFOLD_IDENTITIES and takes ``Request.ablate``.
     ablate: bool = false,
 
     /// What a lane engine's streams enforce themselves (core/lanes/stream.zig): loop guards and answer limits.

@@ -133,8 +133,8 @@ fn plan(srv: *Server, cx: *Cx, is_chat: bool, raw: Value) errors.Refused!Plan {
     const logprobs = if (is_chat) try fields.probabilityOptions(cx, body, exact_bytes) else try fields.legacyLogprobs(cx, body, exact_bytes);
     if (srv.config.request_log) |path| request_log.append(cx.a, path, body);
     var input: chat.Input = .{ .fields = undefined };
-    if (srv.config.ablate_model) |id| if (body.get("model")) |m| {
-        input.ablate = m == .string and std.mem.eql(u8, m.string, id);
+    if (body.get("model")) |m| if (m == .string) for (srv.config.identities, 1..) |id, i| if (std.mem.eql(u8, m.string, id)) {
+        input.ablate = @intCast(i);
     };
     if (is_chat) {
         input.messages = try messages.normalizeWith(cx, body.get("messages"), "system", srv.needs_user_after_tool, .of(srv.info.vision));

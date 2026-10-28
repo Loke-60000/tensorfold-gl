@@ -94,7 +94,7 @@ pub fn Namespace(comptime Tri: type) type {
             /// Whether our own glue runs (no captured set given, or one without this family's entry points).
             own_glue: bool = true,
             follow: ?*const fn (*anyopaque) anyerror!void = null,
-            /// The engine loaded TENSORFOLD_ABLATE: requests may ask for the abliteration.
+            /// The engine loaded TENSORFOLD_IDENTITIES: requests may name one.
             ablate: bool = false,
         };
 

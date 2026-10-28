@@ -370,7 +370,7 @@ pub const Scratch = struct {
     head_local: u64 = 0,
     inv: u64 = 0,
     dummy: u64 = 0,
-    /// Each row's abliteration flag [cap] fp32 (1: its request asked for it), when the model carries directions.
+    /// Each row's identity [cap] fp32 (0: none), when the model carries directions.
     ablate: u64 = 0,
     /// Pinned host copies of what a pass uploads (ids, positions, n-gram rows and sums), owned until the copies land.
     host: ?cuda.HostBuffer = null,
@@ -569,8 +569,8 @@ pub const SeqState = struct {
     scores: u64,
     /// The format of kc and vc (cuda_kv.zig): bf16 rows, or --kv-cache fp8's codes and scales.
     kv: @import("cuda_kv.zig").Kv = .bf16,
-    /// The request named TENSORFOLD_ABLATE_MODEL: its rows get the writers' correction (cuda_ablate.zig).
-    ablate: bool = false,
+    /// The identity the request named, 0 none: its rows get that identity's correction (cuda_ablate.zig).
+    ablate: u8 = 0,
 };
 
 /// The block scores' row stride for a cache of `cap` tokens: its blocks rounded up to 16 (the captured _scores').
@@ -599,7 +599,7 @@ pub const Model = struct {
     ngram: *const ple.Ngram,
     /// The engine's own adds to the MoE outputs: a taught folder's pockets (null: none).
     pocket: ?MoeAdd = null,
-    /// TENSORFOLD_ABLATE's directions (the engine owns them); null: no writer is corrected.
+    /// TENSORFOLD_IDENTITIES' directions (the engine owns them); null: no writer is corrected.
     abl: ?*const @import("cuda_ablate.zig").Ablation = null,
 };
 

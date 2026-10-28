@@ -158,7 +158,7 @@ pub const Engine = struct {
     taught_rows: u64 = 0,
     /// The attention caches' format of every sequence this engine makes (--kv-cache); set before the first newSeq.
     kv: kv_format.Kv = .bf16,
-    /// TENSORFOLD_ABLATE's directions, applied to the rows of sequences that ask (cuda_ablate.zig); null: unset.
+    /// TENSORFOLD_IDENTITIES' directions, applied to the rows of sequences that name one (cuda_ablate.zig); null: none.
     abl: ?ablate.Ablation = null,
 
     pub fn init(gpa: std.mem.Allocator, io: std.Io, driver: *cuda.Driver, stream: *cuda.Stream, model_dir: []const u8) !*Engine {
@@ -489,8 +489,8 @@ pub const Seq = struct {
     cap: usize,
     /// The model as shipped: no learned neuron acts on its rows (a lesson writer's and its judge's reads).
     untaught: bool = false,
-    /// The request named TENSORFOLD_ABLATE_MODEL: its rows get the abliteration (cuda_ablate.zig).
-    ablate: bool = false,
+    /// The identity the request named, 0 none: its rows get that abliteration (cuda_ablate.zig).
+    ablate: u8 = 0,
     /// The format of kc and vc (the engine's --kv-cache).
     kv: kv_format.Kv = .bf16,
 
