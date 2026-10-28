@@ -24,6 +24,11 @@ pub fn open(h: *LaneHost, job: *Job) bool {
             job.key[0] = 0x8000_0000 | @as(u32, @truncate(std.hash.Wyhash.hash(f, std.mem.asBytes(&job.key[0])) & 0x7fff_ffff));
         }
     };
+    // an ablated request's states never meet a stock one's: its key's first word is marked apart (after the frame's mark)
+    if (r.ablate and h.cache != null and r.cacheKey().len > 0) {
+        if (job.key.len == 0) job.key = h.gpa.dupe(u32, r.cacheKey()) catch return !h.drop(job, "out of memory");
+        job.key[0] = 0x8000_0000 | @as(u32, @truncate(std.hash.Wyhash.hash(0x61626c6174, std.mem.asBytes(&job.key[0])) & 0x7fff_ffff));
+    }
     if (h.cache) |store| if (r.embedding == null and r.prompt_logprobs == null and !r.untaught) if (store.lookupRewind(h.gpa, job.cacheKey(), r.bornLen(), r.history_len, r.rewind_len, r.shared_prefixes, r.chunks, h.spans(r))) |l| {
         job.entry = l.entry;
         job.kept0 = store.counts.kept;
@@ -66,6 +71,7 @@ pub fn open(h: *LaneHost, job: *Job) bool {
         .decode_spans = h.spans(r),
         .decide = r.decide,
         .untaught = r.untaught,
+        .ablate = r.ablate,
         .images = r.images,
         .key = r.cache_key,
     }) catch {

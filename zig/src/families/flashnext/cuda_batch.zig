@@ -658,6 +658,18 @@ pub fn Pass(comptime Tri: type) type {
             @memset(pos, 0);
             for (0..blocks) |b| pos[4 * b] = @intCast(if (self.lanes.len > 0) self.lanes[b].pos else self.pos0 + b * att_rows);
             try self.upload(s.pos, std.mem.sliceAsBytes(pos));
+            if (self.m.abl != null) {
+                // each row's abliteration flag: its lane's request asked for it, or the lone sequence's did
+                const mask = s.hostMask(n);
+                if (self.lanes.len > 0) {
+                    var at: usize = 0;
+                    for (self.lanes) |l| {
+                        @memset(mask[at..][0..l.rows], if (l.seq.ablate) 1 else 0);
+                        at += l.rows;
+                    }
+                } else @memset(mask, if (self.seq.ablate) 1 else 0);
+                try self.upload(s.ablate, std.mem.sliceAsBytes(mask));
+            }
             if (!self.prepared) try s.uploaded();
         }
 
@@ -742,10 +754,18 @@ pub fn Pass(comptime Tri: type) type {
                 } else {
                     try self.attnBlockKeep(lw, wt.attnIndex(layer), keep);
                 }
+                // the abliteration of the mixer's output, on its K slices before they are summed into the streams
+                if (self.m.abl) |a| try a.apply(self.k.ablate, self.stream, layer, .attn, s.part, dims, n * dims, self.out_slices, s.ablate, n);
                 if (keep.mix_branch != 0) try self.sumSlices(s.part, keep.mix_branch, true, n * dims, self.out_slices);
                 try self.tri.hcWriteback(s.h, s.h, s.pss, s.part, "*fp32", s.inj, s.dummy, "*bf16", s.dummy, "*bf16", n * dims, n, dims, streams, 4, 1, 1, self.out_slices);
                 try self.readoutKeep(lw.mlp_hc, 0, n, keep.mlp_hc);
                 try self.moeBlockKeep(lw, keep);
+                // and of the shared expert's: its slot of y, or its output read in place, before the router's gate
+                if (self.m.abl) |a| {
+                    if (self.shared_direct) {
+                        try a.apply(self.k.ablate, self.stream, layer, .shared, s.shared_out, dims, 0, 1, s.ablate, n);
+                    } else try a.apply(self.k.ablate, self.stream, layer, .shared, s.y + (slots - 1) * dims * 4, slots * dims, 0, 1, s.ablate, n);
+                }
                 try self.moeAdds(layer, keep);
                 self.pending = layer;
             }

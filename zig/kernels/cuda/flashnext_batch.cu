@@ -526,3 +526,42 @@ extern "C" __global__ void __launch_bounds__(256) fn_gdn_chain_tpr(const float* 
 
 // The prompt GDN block in one kernel a value head (front, chain, gated norm; their bits), no fp32 rows through memory.
 #include "flashnext_gdn_fused.cuh"
+
+// Run-time abliteration of a residual-stream writer's rows (cuda_ablate.zig): y[0][r] -= mask[r] * sum_j lam[j] (R_j . y[r]) R_j
+// where y[r] is the sum of the `slices` fp32 slices' row r (`slice_stride` apart, rows `row_stride` apart) and the
+// correction lands in slice 0; R [k, d] fp32 orthonormal rows, k <= 4. One block of 256 threads a row; the dot products are
+// reduced in a fixed order (each thread's columns, the warp tree, then the warps in order), so a row's result never depends
+// on the batch. A row whose mask is 0 is neither read nor written.
+extern "C" __global__ void __launch_bounds__(256) fn_ablate_rows(float* __restrict__ y, long long row_stride,
+                                                                 long long slice_stride, int slices,
+                                                                 const float* __restrict__ mask, const float* __restrict__ R,
+                                                                 const float* __restrict__ lam, int d, int k) {
+    const float m = mask[blockIdx.x];
+    if (m == 0.0f) return;
+    float* row = y + static_cast<long long>(blockIdx.x) * row_stride;
+    float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    for (int i = threadIdx.x; i < d; i += blockDim.x) {
+        float v = row[i];
+        for (int s = 1; s < slices; ++s) v = __fadd_rn(v, row[static_cast<long long>(s) * slice_stride + i]);
+        for (int j = 0; j < k; ++j) acc[j] = __fadd_rn(acc[j], __fmul_rn(R[j * d + i], v));
+    }
+    __shared__ float part[4][8];
+    __shared__ float coef[4];
+    const unsigned lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+    for (int j = 0; j < k; ++j) {
+        for (int o = 16; o > 0; o >>= 1) acc[j] = __fadd_rn(acc[j], __shfl_down_sync(0xffffffffu, acc[j], o));
+        if (lane == 0) part[j][warp] = acc[j];
+    }
+    __syncthreads();
+    if (threadIdx.x < static_cast<unsigned>(k)) {
+        float s = 0.0f;
+        for (unsigned w = 0; w < blockDim.x / 32; ++w) s = __fadd_rn(s, part[threadIdx.x][w]);
+        coef[threadIdx.x] = __fmul_rn(__fmul_rn(s, lam[threadIdx.x]), m);
+    }
+    __syncthreads();
+    for (int i = threadIdx.x; i < d; i += blockDim.x) {
+        float v = row[i];
+        for (int j = 0; j < k; ++j) v = __fsub_rn(v, __fmul_rn(coef[j], R[j * d + i]));
+        row[i] = v;
+    }
+}

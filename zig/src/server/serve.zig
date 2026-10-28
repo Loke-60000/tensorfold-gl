@@ -132,7 +132,8 @@ pub fn run(gpa: Allocator, io: std.Io, args: cli.Args, s: Setup) u8 {
     defer store.deinit();
     if (!store.enabled() and !auth.loopback(args.host)) log.line("warning: non-loopback server has no API key; requests are open", .{});
     var ids: std.ArrayList([]const u8) = .empty;
-    for ([_][]const []const u8{ &.{s.served}, args.alias }) |group| for (group) |raw| {
+    const ablate_model = if (env(s, "TENSORFOLD_ABLATE_MODEL")) |m| std.mem.trim(u8, m, " \t\r\n") else "";
+    for ([_][]const []const u8{ &.{s.served}, args.alias, &.{ablate_model} }) |group| for (group) |raw| {
         const id = std.mem.trim(u8, raw, " \t\r\n");
         if (id.len == 0) continue;
         for (ids.items) |seen| {
@@ -177,6 +178,7 @@ pub fn run(gpa: Allocator, io: std.Io, args: cli.Args, s: Setup) u8 {
         .prompt_seed = args.prompt_seed,
         .sse_keepalive_s = keepalive_s,
         .request_log = env(s, "TENSORFOLD_REQUEST_LOG"),
+        .ablate_model = if (ablate_model.len > 0) ablate_model else null,
         .dashboard = args.dashboard,
         .compact_at = if (args.compact_auto) .{ .auto = {} } else if (args.compact_fraction) |f| .{ .fraction = f } else null,
         .compact_keep = args.compact_keep,
@@ -208,6 +210,10 @@ pub fn run(gpa: Allocator, io: std.Io, args: cli.Args, s: Setup) u8 {
         std.debug.print("tensorfold: --loop-guard is not supported by this native engine\n", .{});
         return 2;
     }
+    if (config.ablate_model) |m| if (!srv.info.ablate) {
+        std.debug.print("tensorfold: TENSORFOLD_ABLATE_MODEL={s} needs TENSORFOLD_ABLATE and an engine that applies it\n", .{m});
+        return 2;
+    };
     if (raiseOpenFileLimit()) |r| log.line("open-file limit raised: soft {d} -> {d}", .{ r[0], r[1] });
     const address = resolve(io, args.host, args.port) orelse {
         std.debug.print("tensorfold: cannot resolve --host {s}\n", .{args.host});

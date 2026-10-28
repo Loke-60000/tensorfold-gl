@@ -71,6 +71,8 @@ pub const Config = struct {
     prompt_seed: bool = false,
     /// TENSORFOLD_REQUEST_LOG: where chat and completion bodies are appended; null: nowhere.
     request_log: ?[]const u8 = null,
+    /// TENSORFOLD_ABLATE_MODEL: the model id whose requests get the abliteration; null: none do.
+    ablate_model: ?[]const u8 = null,
     /// Null keeps every reply identical to a server that has no compaction.
     compact_at: ?CompactAt = null,
     /// Tokens of the recent tail kept whole. Null uses min(20000, a quarter of the window).

@@ -96,6 +96,7 @@ pub fn open(comptime F: type, gpa: std.mem.Allocator, io: std.Io, ctx: *const cu
         .learn_bytes = if (o.slide) @import("cuda_train.zig").memory() else 0,
         .target = own,
         .own_glue = own.set == null,
+        .ablate = own.engine.abl != null,
         .follow = if (o.rank != 0) F.follow else null,
     };
 }

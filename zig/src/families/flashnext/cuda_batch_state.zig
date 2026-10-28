@@ -187,6 +187,8 @@ pub const Kernels = struct {
     shift: cuda.Function,
     /// Each sparse row's top blocks (attention._select / _select_tiles), native.
     select: cuda.Function,
+    /// The abliteration of a writer's rows (cuda_ablate.zig).
+    ablate: cuda.Function,
 
     pub fn load(d: *const cuda.Driver, tile_cfg: cuda.nvfp4_tile.Config) !Kernels {
         if (!cuda.kernels.available) return error.BuiltWithoutKernels;
@@ -221,6 +223,7 @@ pub const Kernels = struct {
         k.copy_cols = try k.batch.function("fn_copy_cols");
         k.shift = try k.batch.function("fn_shift_window");
         k.select = try k.batch.function("fn_qsa_select");
+        k.ablate = try k.batch.function("fn_ablate_rows");
         k.front = try k.batch.function("fn_gdn_front");
         k.chain = try k.batch.function("fn_gdn_rows");
         k.chain_to = try k.batch.function("fn_gdn_rows_to");
@@ -367,6 +370,8 @@ pub const Scratch = struct {
     head_local: u64 = 0,
     inv: u64 = 0,
     dummy: u64 = 0,
+    /// Each row's abliteration flag [cap] fp32 (1: its request asked for it), when the model carries directions.
+    ablate: u64 = 0,
     /// Pinned host copies of what a pass uploads (ids, positions, n-gram rows and sums), owned until the copies land.
     host: ?cuda.HostBuffer = null,
     /// The uploads from `host` and the event recorded after a pass's last one: the next pass waits before writing it.
@@ -381,12 +386,13 @@ pub const Scratch = struct {
         return b.ptr;
     }
 
-    /// Byte offsets of the staged ids, positions, n-gram rows and their sums in `host`, and its length.
-    fn hostAt(cap: usize) [5]usize {
+    /// Byte offsets of the staged ids, positions, n-gram rows, their sums and the abliteration flags in `host`, and its length.
+    fn hostAt(cap: usize) [6]usize {
         const pos = std.mem.alignForward(usize, cap * 4, 16);
         const emb = pos + (cap + 1) * 16;
         const xs = emb + cap * dims * 2;
-        return .{ 0, pos, emb, xs, xs + cap * (dims / 32) * 4 };
+        const mask = xs + cap * (dims / 32) * 4;
+        return .{ 0, pos, emb, xs, mask, mask + cap * 4 };
     }
 
     /// Waits until the last pass's uploads have read `host` (they are queued behind its kernels), so it may change.
@@ -416,6 +422,9 @@ pub const Scratch = struct {
     }
     pub fn hostXs(s: *const Scratch, n: usize) []f32 {
         return @alignCast(std.mem.bytesAsSlice(f32, s.host.?.bytes[hostAt(s.cap)[3]..][0 .. n * (dims / 32) * 4]));
+    }
+    pub fn hostMask(s: *const Scratch, n: usize) []f32 {
+        return @alignCast(std.mem.bytesAsSlice(f32, s.host.?.bytes[hostAt(s.cap)[4]..][0 .. n * 4]));
     }
 
     /// Bytes `alloc(cap)` takes on the device.
@@ -520,8 +529,9 @@ pub const Scratch = struct {
         try s.bufs.items[s.bufs.items.len - 1].uploadAsync(0, std.mem.sliceAsBytes(&inv), stream.handle);
         s.dummy = try s.add(gpa, d, 4096);
         try s.bufs.items[s.bufs.items.len - 1].fill8(0, stream.handle);
+        s.ablate = try s.add(gpa, d, cap * 4);
         try stream.synchronize();
-        s.host = try cuda.HostBuffer.alloc(d, hostAt(cap)[4]);
+        s.host = try cuda.HostBuffer.alloc(d, hostAt(cap)[5]);
         s.staging = .{ .q = .{ .stream = stream, .event = try cuda.Event.init(d, false) } };
         return s;
     }
@@ -559,6 +569,8 @@ pub const SeqState = struct {
     scores: u64,
     /// The format of kc and vc (cuda_kv.zig): bf16 rows, or --kv-cache fp8's codes and scales.
     kv: @import("cuda_kv.zig").Kv = .bf16,
+    /// The request named TENSORFOLD_ABLATE_MODEL: its rows get the writers' correction (cuda_ablate.zig).
+    ablate: bool = false,
 };
 
 /// The block scores' row stride for a cache of `cap` tokens: its blocks rounded up to 16 (the captured _scores').
@@ -587,6 +599,8 @@ pub const Model = struct {
     ngram: *const ple.Ngram,
     /// The engine's own adds to the MoE outputs: a taught folder's pockets (null: none).
     pocket: ?MoeAdd = null,
+    /// TENSORFOLD_ABLATE's directions (the engine owns them); null: no writer is corrected.
+    abl: ?*const @import("cuda_ablate.zig").Ablation = null,
 };
 
 /// The rows' n-gram embeddings, gathered on a host thread while the GPU embeds and runs layer 0.

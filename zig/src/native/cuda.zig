@@ -455,6 +455,7 @@ fn openWith(comptime F: type, a: Allocator, gpa: Allocator, io: std.Io, o: api.O
         .vision = if (@hasField(@TypeOf(loaded), "vision")) vision_offer.offer(loaded.vision, o.vision) else null,
         .admit = admit,
         .slide_conversations = conversations,
+        .ablate = @hasField(@TypeOf(loaded), "ablate") and loaded.ablate,
     }, .{ .ctx = loaded.ctx, .text = F.explain });
     opened = true;
     if (@hasField(@TypeOf(loaded), "follow")) if (loaded.follow) |f| {

@@ -34,6 +34,8 @@ pub const Input = struct {
     logprobs: ?u8 = null,
     /// ``/v1/completions``' ``prompt_logprobs``: rows for the prompt with this many alternatives; null: not asked.
     prompt_logprobs: ?u8 = null,
+    /// The request named the server's TENSORFOLD_ABLATE_MODEL.
+    ablate: bool = false,
 };
 
 /// A streamed piece: content text (a string) or a delta object (reasoning or tool calls).
@@ -171,6 +173,7 @@ pub fn prepare(srv: *Server, cx: *Cx, input: Input, gone: anytype) Failure!Prepa
         .decide = if (input.prompt == null and !background) prompt_mod.decideOf(srv, rendered.ids) else null,
         .images = rendered.images,
         .cache_key = rendered.cache_key,
+        .ablate = input.ablate,
     };
     try srv.checkFeatures(cx, f, input.tools.len > 0, thinking, rendered.ids, input.tools, &request);
     if (thinking) {

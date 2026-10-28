@@ -10,6 +10,7 @@ const load = @import("cuda_prompt_load.zig");
 pub const batch = @import("cuda_batch.zig");
 const fb = @import("cuda_fn_back.zig");
 const pocket = @import("cuda_pocket.zig");
+const ablate = @import("cuda_ablate.zig");
 const knobs = @import("cuda_knobs.zig");
 pub const kv_format = @import("cuda_kv.zig");
 
@@ -157,6 +158,8 @@ pub const Engine = struct {
     taught_rows: u64 = 0,
     /// The attention caches' format of every sequence this engine makes (--kv-cache); set before the first newSeq.
     kv: kv_format.Kv = .bf16,
+    /// TENSORFOLD_ABLATE's directions, applied to the rows of sequences that ask (cuda_ablate.zig); null: unset.
+    abl: ?ablate.Ablation = null,
 
     pub fn init(gpa: std.mem.Allocator, io: std.Io, driver: *cuda.Driver, stream: *cuda.Stream, model_dir: []const u8) !*Engine {
         return initRank(gpa, io, driver, stream, model_dir, 1, 0);
@@ -238,6 +241,8 @@ pub const Engine = struct {
         e.store.closeFile();
         e.ngram = try ple.Ngram.init(gpa, io, e.model_dir);
         errdefer e.ngram.deinit();
+        e.abl = try ablate.Ablation.fromEnv(gpa, io, driver, dims, world);
+        errdefer if (e.abl) |*a| a.deinit();
         e.batch_k = try batch.Kernels.load(driver, expert_tile);
         e.batch_s = null;
         e.scores = null;
@@ -251,6 +256,7 @@ pub const Engine = struct {
         if (e.batch_s) |*bs| bs.free(e.gpa);
         if (e.scores) |*b| b.free();
         e.batch_k.deinit();
+        if (e.abl) |*a| a.deinit();
         e.ngram.deinit();
         for (e.layers[0..e.n_layers]) |*l| l.free(e.gpa);
         e.head_q.free();
@@ -292,7 +298,7 @@ pub const Engine = struct {
     /// The resident weights a pass reads, with the taught layers' pockets.
     pub fn model(e: *Engine) batch.Model {
         const m = e.pockets.mask();
-        return .{ .table_w = e.table.w.ptr, .table_s = e.table.s.ptr, .table_b = e.table.b.ptr, .table_dense = e.table.dense, .collective = e.collective, .layers = e.layers[0..e.n_layers], .mixer = e.mixer, .head = e.head_q, .ngram = &e.ngram, .pocket = if (m != 0) .{ .ctx = e, .add = servePocket, .layers = m } else null };
+        return .{ .abl = if (e.abl) |*a| a else null, .table_w = e.table.w.ptr, .table_s = e.table.s.ptr, .table_b = e.table.b.ptr, .table_dense = e.table.dense, .collective = e.collective, .layers = e.layers[0..e.n_layers], .mixer = e.mixer, .head = e.head_q, .ngram = &e.ngram, .pocket = if (m != 0) .{ .ctx = e, .add = servePocket, .layers = m } else null };
     }
 
     /// The weights a pass of streams that read the model as shipped reads (untaught): the pockets left out.
@@ -483,12 +489,14 @@ pub const Seq = struct {
     cap: usize,
     /// The model as shipped: no learned neuron acts on its rows (a lesson writer's and its judge's reads).
     untaught: bool = false,
+    /// The request named TENSORFOLD_ABLATE_MODEL: its rows get the abliteration (cuda_ablate.zig).
+    ablate: bool = false,
     /// The format of kc and vc (the engine's --kv-cache).
     kv: kv_format.Kv = .bf16,
 
     /// The caches a batched pass reads and leaves; `scores` the engine's block scores (Engine.reserveScores).
     pub fn view(s: *Seq, scores: u64) batch.SeqState {
-        return .{ .media = if (s.media) |*m| m.view() else null, .conv = s.conv, .state = s.state, .kc = s.kc, .vc = s.vc, .ikc = s.ikc, .pooled = s.pooled, .tail = s.tail, .history = &s.history, .cap = s.cap, .scores = scores, .kv = s.kv };
+        return .{ .ablate = s.ablate, .media = if (s.media) |*m| m.view() else null, .conv = s.conv, .state = s.state, .kc = s.kc, .vc = s.vc, .ikc = s.ikc, .pooled = s.pooled, .tail = s.tail, .history = &s.history, .cap = s.cap, .scores = scores, .kv = s.kv };
     }
 
     pub fn deinit(s: *Seq, gpa: std.mem.Allocator) void {

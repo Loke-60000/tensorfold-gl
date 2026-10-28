@@ -94,6 +94,8 @@ pub fn Namespace(comptime Tri: type) type {
             /// Whether our own glue runs (no captured set given, or one without this family's entry points).
             own_glue: bool = true,
             follow: ?*const fn (*anyopaque) anyerror!void = null,
+            /// The engine loaded TENSORFOLD_ABLATE: requests may ask for the abliteration.
+            ablate: bool = false,
         };
 
         /// Device bytes of the checkpoint: the n-gram tables stay mapped, the MTP head counts; 0 if unread.
@@ -286,6 +288,7 @@ pub fn Namespace(comptime Tri: type) type {
                 } };
                 const l = gop.value_ptr;
                 l.seq.untaught = s.untaught;
+                l.seq.ablate = s.ablate;
                 errdefer {
                     dropLane(self, l);
                     self.lanes.removeByPtr(gop.key_ptr);
